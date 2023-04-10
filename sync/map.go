@@ -37,7 +37,7 @@ type Value[T any] interface {
 // LoadOrStore is a write operation when it returns loaded set to false;
 // CompareAndSwap is a write operation when it returns swapped set to true;
 // and CompareAndDelete is a write operation when it returns deleted set to true.
-type Map[T Value[T]] struct {
+type Map[K comparable, T comparable] struct {
 	mu sync.Mutex
 
 	// read contains the portion of the map's contents that are safe for
@@ -49,7 +49,7 @@ type Map[T Value[T]] struct {
 	// Entries stored in read may be updated concurrently without mu, but updating
 	// a previously-expunged entry requires that the entry be copied to the dirty
 	// map and unexpunged with mu held.
-	read atomic.Pointer[readOnly[T]]
+	read atomic.Pointer[readOnly[K, T]]
 
 	// dirty contains the portion of the map's contents that require mu to be
 	// held. To ensure that the dirty map can be promoted to the read map quickly,
@@ -61,7 +61,7 @@ type Map[T Value[T]] struct {
 	//
 	// If the dirty map is nil, the next write to the map will initialize it by
 	// making a shallow copy of the clean map, omitting stale entries.
-	dirty map[any]*entry[T]
+	dirty map[K]*entry[T]
 
 	// misses counts the number of loads since the read map was last updated that
 	// needed to lock mu to determine whether the key was present.
@@ -77,7 +77,7 @@ type Map[T Value[T]] struct {
 	expunged *T
 }
 
-func (m *Map[T]) getExpunged() *T {
+func (m *Map[K, T]) getExpunged() *T {
 	m.once.Do(func() {
 		m.expunged = new(T)
 	})
@@ -85,13 +85,13 @@ func (m *Map[T]) getExpunged() *T {
 }
 
 // readOnly is an immutable struct stored atomically in the Map.read field.
-type readOnly[T Value[T]] struct {
-	m       map[any]*entry[T]
+type readOnly[K comparable, T comparable] struct {
+	m       map[K]*entry[T]
 	amended bool // true if the dirty map contains some key not in m.
 }
 
 // An entry is a slot in the map corresponding to a particular key.
-type entry[T Value[T]] struct {
+type entry[T comparable] struct {
 	// p points to the interface{} value stored for the entry.
 	//
 	// If p == nil, the entry has been deleted, and either m.dirty == nil or
@@ -114,23 +114,23 @@ type entry[T Value[T]] struct {
 	p atomic.Pointer[T]
 }
 
-func newEntry[T Value[T]](i T) *entry[T] {
+func newEntry[T comparable](i T) *entry[T] {
 	e := &entry[T]{}
 	e.p.Store(&i)
 	return e
 }
 
-func (m *Map[T]) loadReadOnly() readOnly[T] {
+func (m *Map[K, T]) loadReadOnly() readOnly[K, T] {
 	if p := m.read.Load(); p != nil {
 		return *p
 	}
-	return readOnly[T]{}
+	return readOnly[K, T]{}
 }
 
 // Load returns the value stored in the map for a key, or nil if no
 // value is present.
 // The ok result indicates whether value was found in the map.
-func (m *Map[T]) Load(key any) (value T, ok bool) {
+func (m *Map[K, T]) Load(key K) (value T, ok bool) {
 	read := m.loadReadOnly()
 	e, ok := read.m[key]
 	if !ok && read.amended {
@@ -166,7 +166,7 @@ func (e *entry[T]) load(expunged *T) (value T, ok bool) {
 }
 
 // Store sets the value for a key.
-func (m *Map[T]) Store(key any, value T) {
+func (m *Map[K, T]) Store(key K, value T) {
 	_, _ = m.Swap(key, value)
 }
 
@@ -178,7 +178,7 @@ func (m *Map[T]) Store(key any, value T) {
 // the entry unchanged.
 func (e *entry[T]) tryCompareAndSwap(o, n T, expunged *T) bool {
 	p := e.p.Load()
-	if p == nil || p == expunged || !(*p).Equal(o) {
+	if p == nil || p == expunged || *p != o {
 		return false
 	}
 
@@ -191,7 +191,7 @@ func (e *entry[T]) tryCompareAndSwap(o, n T, expunged *T) bool {
 			return true
 		}
 		p = e.p.Load()
-		if p == nil || p == expunged || !(*p).Equal(o) {
+		if p == nil || p == expunged || *p != o {
 			return false
 		}
 	}
@@ -215,7 +215,7 @@ func (e *entry[T]) swapLocked(i *T) *T {
 // LoadOrStore returns the existing value for the key if present.
 // Otherwise, it stores and returns the given value.
 // The loaded result is true if the value was loaded, false if stored.
-func (m *Map[T]) LoadOrStore(key any, value T) (actual T, loaded bool) {
+func (m *Map[K, T]) LoadOrStore(key K, value T) (actual T, loaded bool) {
 	// Avoid locking if it's a clean hit.
 	read := m.loadReadOnly()
 	if e, ok := read.m[key]; ok {
@@ -240,7 +240,7 @@ func (m *Map[T]) LoadOrStore(key any, value T) (actual T, loaded bool) {
 			// We're adding the first new key to the dirty map.
 			// Make sure it is allocated and mark the read-only map as incomplete.
 			m.dirtyLocked()
-			m.read.Store(&readOnly[T]{m: read.m, amended: true})
+			m.read.Store(&readOnly[K, T]{m: read.m, amended: true})
 		}
 		m.dirty[key] = newEntry(value)
 		actual, loaded = value, false
@@ -286,7 +286,7 @@ func (e *entry[T]) tryLoadOrStore(i T, expunged *T) (actual T, loaded, ok bool) 
 
 // LoadAndDelete deletes the value for a key, returning the previous value if any.
 // The loaded result reports whether the key was present.
-func (m *Map[T]) LoadAndDelete(key any) (value T, loaded bool) {
+func (m *Map[K, T]) LoadAndDelete(key K) (value T, loaded bool) {
 	read := m.loadReadOnly()
 	e, ok := read.m[key]
 	if !ok && read.amended {
@@ -310,7 +310,7 @@ func (m *Map[T]) LoadAndDelete(key any) (value T, loaded bool) {
 }
 
 // Delete deletes the value for a key.
-func (m *Map[T]) Delete(key any) {
+func (m *Map[K, T]) Delete(key K) {
 	m.LoadAndDelete(key)
 }
 
@@ -344,7 +344,7 @@ func (e *entry[T]) trySwap(i *T, expunged *T) (*T, bool) {
 
 // Swap swaps the value for a key and returns the previous value if any.
 // The loaded result reports whether the key was present.
-func (m *Map[T]) Swap(key any, value T) (previous T, loaded bool) {
+func (m *Map[K, T]) Swap(key K, value T) (previous T, loaded bool) {
 	read := m.loadReadOnly()
 	if e, ok := read.m[key]; ok {
 		if v, ok := e.trySwap(&value, m.getExpunged()); ok {
@@ -377,7 +377,7 @@ func (m *Map[T]) Swap(key any, value T) (previous T, loaded bool) {
 			// We're adding the first new key to the dirty map.
 			// Make sure it is allocated and mark the read-only map as incomplete.
 			m.dirtyLocked()
-			m.read.Store(&readOnly[T]{m: read.m, amended: true})
+			m.read.Store(&readOnly[K, T]{m: read.m, amended: true})
 		}
 		m.dirty[key] = newEntry(value)
 	}
@@ -388,7 +388,7 @@ func (m *Map[T]) Swap(key any, value T) (previous T, loaded bool) {
 // CompareAndSwap swaps the old and new values for key
 // if the value stored in the map is equal to old.
 // The old value must be of a comparable type.
-func (m *Map[T]) CompareAndSwap(key any, old, new T) bool {
+func (m *Map[K, T]) CompareAndSwap(key K, old, new T) bool {
 	read := m.loadReadOnly()
 	if e, ok := read.m[key]; ok {
 		return e.tryCompareAndSwap(old, new, m.getExpunged())
@@ -420,7 +420,7 @@ func (m *Map[T]) CompareAndSwap(key any, old, new T) bool {
 //
 // If there is no current value for key in the map, CompareAndDelete
 // returns false (even if the old value is the nil interface value).
-func (m *Map[T]) CompareAndDelete(key any, old T) (deleted bool) {
+func (m *Map[K, T]) CompareAndDelete(key K, old T) (deleted bool) {
 	read := m.loadReadOnly()
 	e, ok := read.m[key]
 	if !ok && read.amended {
@@ -442,7 +442,7 @@ func (m *Map[T]) CompareAndDelete(key any, old T) (deleted bool) {
 	}
 	for ok {
 		p := e.p.Load()
-		if p == nil || p == m.getExpunged() || !(*p).Equal(old) {
+		if p == nil || p == m.getExpunged() || *p != old {
 			return false
 		}
 		if e.p.CompareAndSwap(p, nil) {
@@ -463,7 +463,7 @@ func (m *Map[T]) CompareAndDelete(key any, old T) (deleted bool) {
 //
 // Range may be O(N) with the number of elements in the map even if f returns
 // false after a constant number of calls.
-func (m *Map[T]) Range(f func(key any, value T) bool) {
+func (m *Map[K, T]) Range(f func(key K, value T) bool) {
 	// We need to be able to iterate over all of the keys that were already
 	// present at the start of the call to Range.
 	// If read.amended is false, then read.m satisfies that property without
@@ -477,7 +477,7 @@ func (m *Map[T]) Range(f func(key any, value T) bool) {
 		m.mu.Lock()
 		read = m.loadReadOnly()
 		if read.amended {
-			read = readOnly[T]{m: m.dirty}
+			read = readOnly[K, T]{m: m.dirty}
 			m.read.Store(&read)
 			m.dirty = nil
 			m.misses = 0
@@ -496,23 +496,23 @@ func (m *Map[T]) Range(f func(key any, value T) bool) {
 	}
 }
 
-func (m *Map[T]) missLocked() {
+func (m *Map[K, T]) missLocked() {
 	m.misses++
 	if m.misses < len(m.dirty) {
 		return
 	}
-	m.read.Store(&readOnly[T]{m: m.dirty})
+	m.read.Store(&readOnly[K, T]{m: m.dirty})
 	m.dirty = nil
 	m.misses = 0
 }
 
-func (m *Map[T]) dirtyLocked() {
+func (m *Map[K, T]) dirtyLocked() {
 	if m.dirty != nil {
 		return
 	}
 
 	read := m.loadReadOnly()
-	m.dirty = make(map[any]*entry[T], len(read.m))
+	m.dirty = make(map[K]*entry[T], len(read.m))
 	for k, e := range read.m {
 		if !e.tryExpungeLocked(m.getExpunged()) {
 			m.dirty[k] = e

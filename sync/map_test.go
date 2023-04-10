@@ -43,11 +43,11 @@ var mapOps = [...]mapOp{
 // mapCall is a quick.Generator for calls on mapInterface.
 type mapCall struct {
 	op mapOp
-	k  any
+	k  int
 	v  myInt
 }
 
-func (c mapCall) apply(m mapInterface[myInt]) (any, bool) {
+func (c mapCall) apply(m mapInterface[int, myInt]) (any, bool) {
 	switch c.op {
 	case opLoad:
 		return m.Load(c.k)
@@ -91,7 +91,7 @@ func randValue(r *rand.Rand) myInt {
 }
 
 func (mapCall) Generate(r *rand.Rand, _ int) reflect.Value {
-	c := mapCall{op: mapOps[rand.Intn(len(mapOps))], k: randValue(r)}
+	c := mapCall{op: mapOps[rand.Intn(len(mapOps))], k: int(randValue(r))}
 	switch c.op {
 	case opStore, opLoadOrStore:
 		c.v = randValue(r)
@@ -99,14 +99,14 @@ func (mapCall) Generate(r *rand.Rand, _ int) reflect.Value {
 	return reflect.ValueOf(c)
 }
 
-func applyCalls(m mapInterface[myInt], calls []mapCall) (results []mapResult, final map[any]myInt) {
+func applyCalls(m mapInterface[int, myInt], calls []mapCall) (results []mapResult, final map[any]myInt) {
 	for _, c := range calls {
 		v, ok := c.apply(m)
 		results = append(results, mapResult{v, ok})
 	}
 
 	final = make(map[any]myInt)
-	m.Range(func(k any, v myInt) bool {
+	m.Range(func(k int, v myInt) bool {
 		final[k] = v
 		return true
 	})
@@ -115,15 +115,15 @@ func applyCalls(m mapInterface[myInt], calls []mapCall) (results []mapResult, fi
 }
 
 func applyMap(calls []mapCall) ([]mapResult, map[any]myInt) {
-	return applyCalls(new(xsync.Map[myInt]), calls)
+	return applyCalls(new(xsync.Map[int, myInt]), calls)
 }
 
 func applyRWMutexMap(calls []mapCall) ([]mapResult, map[any]myInt) {
-	return applyCalls(new(RWMutexMap[myInt]), calls)
+	return applyCalls(new(RWMutexMap[int, myInt]), calls)
 }
 
 func applyDeepCopyMap(calls []mapCall) ([]mapResult, map[any]myInt) {
-	return applyCalls(new(DeepCopyMap[myInt]), calls)
+	return applyCalls(new(DeepCopyMap[int, myInt]), calls)
 }
 
 func TestMapMatchesRWMutex(t *testing.T) {
@@ -141,7 +141,7 @@ func TestMapMatchesDeepCopy(t *testing.T) {
 func TestConcurrentRange(t *testing.T) {
 	const mapSize = 1 << 10
 
-	m := new(xsync.Map[myInt])
+	m := new(xsync.Map[int64, myInt])
 	for n := int64(1); n <= mapSize; n++ {
 		m.Store(n, myInt(n))
 	}
@@ -181,8 +181,8 @@ func TestConcurrentRange(t *testing.T) {
 	for n := iters; n > 0; n-- {
 		seen := make(map[int64]bool, mapSize)
 
-		m.Range(func(ki any, vi myInt) bool {
-			k, v := ki.(int64), int64(vi)
+		m.Range(func(ki int64, vi myInt) bool {
+			k, v := ki, int64(vi)
 			if v%k != 0 {
 				t.Fatalf("while Storing multiples of %v, Range saw value %v", k, v)
 			}
@@ -201,7 +201,7 @@ func TestConcurrentRange(t *testing.T) {
 
 func TestIssue40999(t *testing.T) {
 
-	var m xsync.Map[myInt]
+	var m xsync.Map[any, myInt]
 
 	// Since the miss-counting in missLocked (via Delete)
 	// compares the miss count with len(m.dirty),
@@ -224,13 +224,13 @@ func TestIssue40999(t *testing.T) {
 }
 
 func TestMapRangeNestedCall(t *testing.T) { // Issue 46399
-	var m xsync.Map[myString]
+	var m xsync.Map[int, myString]
 	for i, v := range [3]myString{"hello", "world", "Go"} {
 		m.Store(i, v)
 	}
 
-	m.Range(func(key any, _ myString) bool {
-		m.Range(func(key any, value myString) bool {
+	m.Range(func(key int, _ myString) bool {
+		m.Range(func(key int, value myString) bool {
 			// We should be able to load the key offered in the Range callback,
 			// because there are no concurrent Delete involved in this tested map.
 			if v, ok := m.Load(key); !ok || !reflect.DeepEqual(v, value) {
@@ -264,7 +264,7 @@ func TestMapRangeNestedCall(t *testing.T) { // Issue 46399
 	// After a Range of Delete, all keys should be removed and any
 	// further Range won't invoke the callback. Hence length remains 0.
 	length := 0
-	m.Range(func(_ any, _ myString) bool {
+	m.Range(func(_ int, _ myString) bool {
 		length++
 		return true
 	})
@@ -275,7 +275,7 @@ func TestMapRangeNestedCall(t *testing.T) { // Issue 46399
 }
 
 func TestCompareAndSwap_NonExistingKey(t *testing.T) {
-	m := &xsync.Map[myInt]{}
+	m := &xsync.Map[any, myInt]{}
 	if m.CompareAndSwap(m, 0, 42) {
 		// See https://go.dev/issue/51972#issuecomment-1126408637.
 		t.Fatalf("CompareAndSwap on an non-existing key succeeded")

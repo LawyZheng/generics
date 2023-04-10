@@ -13,14 +13,14 @@ import (
 )
 
 type bench struct {
-	setup func(*testing.B, mapInterface[myInt])
-	perG  func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt])
+	setup func(*testing.B, mapInterface[int, myInt])
+	perG  func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt])
 }
 
 func benchMap(b *testing.B, bench bench) {
-	for _, m := range [...]mapInterface[myInt]{&DeepCopyMap[myInt]{}, &RWMutexMap[myInt]{}, &xsync.Map[myInt]{}} {
+	for _, m := range [...]mapInterface[int, myInt]{&DeepCopyMap[int, myInt]{}, &RWMutexMap[int, myInt]{}, &xsync.Map[int, myInt]{}} {
 		b.Run(fmt.Sprintf("%T", m), func(b *testing.B) {
-			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(mapInterface[myInt])
+			m = reflect.New(reflect.TypeOf(m).Elem()).Interface().(mapInterface[int, myInt])
 			if bench.setup != nil {
 				bench.setup(b, m)
 			}
@@ -40,7 +40,7 @@ func BenchmarkLoadMostlyHits(b *testing.B) {
 	const hits, misses = 1023, 1
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < hits; i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -50,7 +50,7 @@ func BenchmarkLoadMostlyHits(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.Load(i % (hits + misses))
 			}
@@ -62,7 +62,7 @@ func BenchmarkLoadMostlyMisses(b *testing.B) {
 	const hits, misses = 1, 1023
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < hits; i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -72,7 +72,7 @@ func BenchmarkLoadMostlyMisses(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.Load(i % (hits + misses))
 			}
@@ -84,8 +84,8 @@ func BenchmarkLoadOrStoreBalanced(b *testing.B) {
 	const hits, misses = 128, 128
 
 	benchMap(b, bench{
-		setup: func(b *testing.B, m mapInterface[myInt]) {
-			if _, ok := m.(*DeepCopyMap[myInt]); ok {
+		setup: func(b *testing.B, m mapInterface[int, myInt]) {
+			if _, ok := m.(*DeepCopyMap[int, myInt]); ok {
 				b.Skip("DeepCopyMap has quadratic running time.")
 			}
 			for i := 0; i < hits; i++ {
@@ -97,7 +97,7 @@ func BenchmarkLoadOrStoreBalanced(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				j := i % (hits + misses)
 				if j < hits {
@@ -116,13 +116,13 @@ func BenchmarkLoadOrStoreBalanced(b *testing.B) {
 
 func BenchmarkLoadOrStoreUnique(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(b *testing.B, m mapInterface[myInt]) {
-			if _, ok := m.(*DeepCopyMap[myInt]); ok {
+		setup: func(b *testing.B, m mapInterface[int, myInt]) {
+			if _, ok := m.(*DeepCopyMap[int, myInt]); ok {
 				b.Skip("DeepCopyMap has quadratic running time.")
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -132,11 +132,11 @@ func BenchmarkLoadOrStoreUnique(b *testing.B) {
 
 func BenchmarkLoadOrStoreCollision(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.LoadOrStore(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.LoadOrStore(0, 0)
 			}
@@ -148,8 +148,8 @@ func BenchmarkLoadAndDeleteBalanced(b *testing.B) {
 	const hits, misses = 128, 128
 
 	benchMap(b, bench{
-		setup: func(b *testing.B, m mapInterface[myInt]) {
-			if _, ok := m.(*DeepCopyMap[myInt]); ok {
+		setup: func(b *testing.B, m mapInterface[int, myInt]) {
+			if _, ok := m.(*DeepCopyMap[int, myInt]); ok {
 				b.Skip("DeepCopyMap has quadratic running time.")
 			}
 			for i := 0; i < hits; i++ {
@@ -161,7 +161,7 @@ func BenchmarkLoadAndDeleteBalanced(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				j := i % (hits + misses)
 				if j < hits {
@@ -176,13 +176,13 @@ func BenchmarkLoadAndDeleteBalanced(b *testing.B) {
 
 func BenchmarkLoadAndDeleteUnique(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(b *testing.B, m mapInterface[myInt]) {
-			if _, ok := m.(*DeepCopyMap[myInt]); ok {
+		setup: func(b *testing.B, m mapInterface[int, myInt]) {
+			if _, ok := m.(*DeepCopyMap[int, myInt]); ok {
 				b.Skip("DeepCopyMap has quadratic running time.")
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.LoadAndDelete(i)
 			}
@@ -192,11 +192,11 @@ func BenchmarkLoadAndDeleteUnique(b *testing.B) {
 
 func BenchmarkLoadAndDeleteCollision(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.LoadOrStore(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				if _, loaded := m.LoadAndDelete(0); loaded {
 					m.Store(0, 0)
@@ -210,15 +210,15 @@ func BenchmarkRange(b *testing.B) {
 	const mapSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < mapSize; i++ {
 				m.Store(i, myInt(i))
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
-				m.Range(func(_ any, _ myInt) bool { return true })
+				m.Range(func(_ int, _ myInt) bool { return true })
 			}
 		},
 	})
@@ -231,7 +231,7 @@ func BenchmarkRange(b *testing.B) {
 // This forces the Load calls to always acquire the map's mutex.
 func BenchmarkAdversarialAlloc(b *testing.B) {
 	benchMap(b, bench{
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			var stores, loadsSinceStore int64
 			for ; pb.Next(); i++ {
 				m.Load(i)
@@ -254,18 +254,18 @@ func BenchmarkAdversarialDelete(b *testing.B) {
 	const mapSize = 1 << 10
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < mapSize; i++ {
 				m.Store(i, myInt(i))
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.Load(i)
 
 				if i%mapSize == 0 {
-					m.Range(func(k any, _ myInt) bool {
+					m.Range(func(k int, _ myInt) bool {
 						m.Delete(k)
 						return false
 					})
@@ -278,11 +278,11 @@ func BenchmarkAdversarialDelete(b *testing.B) {
 
 func BenchmarkDeleteCollision(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.LoadOrStore(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.Delete(0)
 			}
@@ -292,11 +292,11 @@ func BenchmarkDeleteCollision(b *testing.B) {
 
 func BenchmarkSwapCollision(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.LoadOrStore(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.Swap(0, 0)
 			}
@@ -308,7 +308,7 @@ func BenchmarkSwapMostlyHits(b *testing.B) {
 	const hits, misses = 1023, 1
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < hits; i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -318,7 +318,7 @@ func BenchmarkSwapMostlyHits(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				if i%(hits+misses) < hits {
 					v := i % (hits + misses)
@@ -336,7 +336,7 @@ func BenchmarkSwapMostlyMisses(b *testing.B) {
 	const hits, misses = 1, 1023
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < hits; i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -346,7 +346,7 @@ func BenchmarkSwapMostlyMisses(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				if i%(hits+misses) < hits {
 					v := i % (hits + misses)
@@ -362,11 +362,11 @@ func BenchmarkSwapMostlyMisses(b *testing.B) {
 
 func BenchmarkCompareAndSwapCollision(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.LoadOrStore(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for pb.Next() {
 				if m.CompareAndSwap(0, 0, 42) {
 					m.CompareAndSwap(0, 42, 0)
@@ -378,7 +378,7 @@ func BenchmarkCompareAndSwapCollision(b *testing.B) {
 
 func BenchmarkCompareAndSwapNoExistingKey(b *testing.B) {
 	benchMap(b, bench{
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				if m.CompareAndSwap(i, 0, 0) {
 					m.Delete(i)
@@ -390,11 +390,11 @@ func BenchmarkCompareAndSwapNoExistingKey(b *testing.B) {
 
 func BenchmarkCompareAndSwapValueNotEqual(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.Store(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				m.CompareAndSwap(0, 1, 2)
 			}
@@ -406,8 +406,8 @@ func BenchmarkCompareAndSwapMostlyHits(b *testing.B) {
 	const hits, misses = 1023, 1
 
 	benchMap(b, bench{
-		setup: func(b *testing.B, m mapInterface[myInt]) {
-			if _, ok := m.(*DeepCopyMap[myInt]); ok {
+		setup: func(b *testing.B, m mapInterface[int, myInt]) {
+			if _, ok := m.(*DeepCopyMap[int, myInt]); ok {
 				b.Skip("DeepCopyMap has quadratic running time.")
 			}
 
@@ -420,7 +420,7 @@ func BenchmarkCompareAndSwapMostlyHits(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				v := i
 				if i%(hits+misses) < hits {
@@ -436,7 +436,7 @@ func BenchmarkCompareAndSwapMostlyMisses(b *testing.B) {
 	const hits, misses = 1, 1023
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < hits; i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -446,7 +446,7 @@ func BenchmarkCompareAndSwapMostlyMisses(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				v := i
 				if i%(hits+misses) < hits {
@@ -460,11 +460,11 @@ func BenchmarkCompareAndSwapMostlyMisses(b *testing.B) {
 
 func BenchmarkCompareAndDeleteCollision(b *testing.B) {
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			m.LoadOrStore(0, 0)
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				if m.CompareAndDelete(0, 0) {
 					m.Store(0, 0)
@@ -478,8 +478,8 @@ func BenchmarkCompareAndDeleteMostlyHits(b *testing.B) {
 	const hits, misses = 1023, 1
 
 	benchMap(b, bench{
-		setup: func(b *testing.B, m mapInterface[myInt]) {
-			if _, ok := m.(*DeepCopyMap[myInt]); ok {
+		setup: func(b *testing.B, m mapInterface[int, myInt]) {
+			if _, ok := m.(*DeepCopyMap[int, myInt]); ok {
 				b.Skip("DeepCopyMap has quadratic running time.")
 			}
 
@@ -492,7 +492,7 @@ func BenchmarkCompareAndDeleteMostlyHits(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				v := i
 				if i%(hits+misses) < hits {
@@ -510,7 +510,7 @@ func BenchmarkCompareAndDeleteMostlyMisses(b *testing.B) {
 	const hits, misses = 1, 1023
 
 	benchMap(b, bench{
-		setup: func(_ *testing.B, m mapInterface[myInt]) {
+		setup: func(_ *testing.B, m mapInterface[int, myInt]) {
 			for i := 0; i < hits; i++ {
 				m.LoadOrStore(i, myInt(i))
 			}
@@ -520,7 +520,7 @@ func BenchmarkCompareAndDeleteMostlyMisses(b *testing.B) {
 			}
 		},
 
-		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[myInt]) {
+		perG: func(b *testing.B, pb *testing.PB, i int, m mapInterface[int, myInt]) {
 			for ; pb.Next(); i++ {
 				v := i
 				if i%(hits+misses) < hits {
